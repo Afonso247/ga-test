@@ -35,15 +35,13 @@ class GeneticSearchSettings:
 
 class GeneticSearch:
 
-    fitness_history = []
+    def __init__(self):
+        self.fitness_history = []
+        self.rng = np.random.default_rng()
 
     def random_initialization(self, population_size, individual_genectic_size):
         # TODO validate the parameters
-
-        rng = np.random.default_rng()
-
-        # to understand this line aks an AI about list comprehension
-        return [Individual(rng.integers(0, 2, individual_genectic_size)) for _ in range(population_size)]
+        return [Individual(self.rng.integers(0, 2, individual_genectic_size)) for _ in range(population_size)]
 
     def compute_fitness_and_find_best_individual(self, population, fitness_function):
         best_individual = Individual([])
@@ -64,9 +62,7 @@ class GeneticSearch:
             sum = sum + max(individual.fitness, 1e-10)
             intervals.append(sum)
 
-        rng = np.random.default_rng()
-
-        number = rng.uniform(0, sum)
+        number = self.rng.uniform(0, sum)
 
         for i in range(len(population)):
             if (number <= intervals[i]):
@@ -76,20 +72,16 @@ class GeneticSearch:
         print("ERROR: random selection had no return", sum)
 
     def reproduce(self, parent1, parent2):
-       rng = np.random.default_rng()
+        splitting_index = self.rng.integers(0, len(parent1.genetic_code))
 
-       splitting_index = rng.integers(0, len(parent1.genetic_code))
-
-       return Individual(np.concatenate((parent1.genetic_code[:splitting_index], parent2.genetic_code[splitting_index:])))
+        return Individual(np.concatenate((parent1.genetic_code[:splitting_index], parent2.genetic_code[splitting_index:])))
 
     def mutation(self, individual, mutation_rate):
-        rng = np.random.default_rng()
-
-        number = rng.random()
+        number = self.rng.random()
 
         if (number < mutation_rate):
             genetic_code = individual.genetic_code
-            mutation_index = rng.integers(len(genetic_code))
+            mutation_index = self.rng.integers(len(genetic_code))
             genetic_code[mutation_index] = (genetic_code[mutation_index] + 1) % 2
 
     def _resolve_elite_size(self, elite_size, population_size):
@@ -231,7 +223,7 @@ fit_center_block = fitness_center_block
 fit_royal_road   = fitness_royal_road
 fit_parity       = fitness_parity
 population_size          = 100
-individual_genectic_size = 100
+individual_genectic_size = 200
 number_of_generations    = 50
 mutation_rate            = 0.1
 
@@ -242,28 +234,20 @@ mutation_rate            = 0.1
 #   0.75  → 75 % da população
 
 test_settings = [
-    GeneticSearchSettings(fit_parity, population_size, individual_genectic_size,
+    GeneticSearchSettings(fit_ones, population_size, individual_genectic_size,
                           number_of_generations, mutation_rate,
                           store_best_overall_individual=False, elite_size=0.20),
 
-    GeneticSearchSettings(fit_parity, population_size, individual_genectic_size,
+    GeneticSearchSettings(fit_ones, population_size, individual_genectic_size,
                           number_of_generations, mutation_rate,
                           store_best_overall_individual=False, elite_size=0.25),
 
-    GeneticSearchSettings(fit_parity, population_size, individual_genectic_size,
+    GeneticSearchSettings(fit_ones, population_size, individual_genectic_size,
                           number_of_generations, mutation_rate,
                           store_best_overall_individual=False, elite_size=0.30),
-
-    GeneticSearchSettings(fit_parity, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.35),
-
-    GeneticSearchSettings(fit_parity, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.40),
 ]
 
-labels = ["Elite: 20%", "Elite: 25%", "Elite: 30%", "Elite: 35%", "Elite: 40%"]
+labels = ["Elite: 20%", "Elite: 25%", "Elite: 30%"]
 
 number_of_executions = 50
 
