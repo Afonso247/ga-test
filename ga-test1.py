@@ -35,13 +35,15 @@ class GeneticSearchSettings:
 
 class GeneticSearch:
 
-    def __init__(self):
-        self.fitness_history = []
-        self.rng = np.random.default_rng()
+    fitness_history = []
 
     def random_initialization(self, population_size, individual_genectic_size):
         # TODO validate the parameters
-        return [Individual(self.rng.integers(0, 2, individual_genectic_size)) for _ in range(population_size)]
+
+        rng = np.random.default_rng()
+
+        # to understand this line aks an AI about list comprehension
+        return [Individual(rng.integers(0, 2, individual_genectic_size)) for _ in range(population_size)]
 
     def compute_fitness_and_find_best_individual(self, population, fitness_function):
         best_individual = Individual([])
@@ -62,7 +64,9 @@ class GeneticSearch:
             sum = sum + max(individual.fitness, 1e-10)
             intervals.append(sum)
 
-        number = self.rng.uniform(0, sum)
+        rng = np.random.default_rng()
+
+        number = rng.uniform(0, sum)
 
         for i in range(len(population)):
             if (number <= intervals[i]):
@@ -72,16 +76,20 @@ class GeneticSearch:
         print("ERROR: random selection had no return", sum)
 
     def reproduce(self, parent1, parent2):
-        splitting_index = self.rng.integers(0, len(parent1.genetic_code))
+       rng = np.random.default_rng()
 
-        return Individual(np.concatenate((parent1.genetic_code[:splitting_index], parent2.genetic_code[splitting_index:])))
+       splitting_index = rng.integers(0, len(parent1.genetic_code))
+
+       return Individual(np.concatenate((parent1.genetic_code[:splitting_index], parent2.genetic_code[splitting_index:])))
 
     def mutation(self, individual, mutation_rate):
-        number = self.rng.random()
+        rng = np.random.default_rng()
+
+        number = rng.random()
 
         if (number < mutation_rate):
             genetic_code = individual.genetic_code
-            mutation_index = self.rng.integers(len(genetic_code))
+            mutation_index = rng.integers(len(genetic_code))
             genetic_code[mutation_index] = (genetic_code[mutation_index] + 1) % 2
 
     def _resolve_elite_size(self, elite_size, population_size):
