@@ -246,18 +246,18 @@ fit_zeros        = fitness_zeros
 fit_center_block = fitness_center_block
 fit_royal_road   = fitness_royal_road
 fit_parity       = fitness_parity
-population_size          = 100
-individual_genectic_size = 200
-number_of_generations    = 50
+population_size          = 50
+individual_genectic_size = 100
+number_of_generations    = 100
 mutation_rate            = 0.1
 
 fit_random       = fitness_random(individual_genectic_size)
 
 #   elite_size options:
 #   None  → apenas 1 indivíduo (o melhor da geração)
-#   0.25  → 25 % da população
-#   0.50  → 50 % da população
-#   0.75  → 75 % da população
+#   0.05  → 5 % da população
+#   0.10  → 10 % da população
+#   e assim em diante
 
 test_settings = [
     GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
@@ -272,20 +272,21 @@ test_settings = [
                           number_of_generations, mutation_rate,
                           store_best_overall_individual=False, elite_size=0.15),
 
-    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.20),
+    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+    #                       number_of_generations, mutation_rate,
+    #                       store_best_overall_individual=False, elite_size=0.20),
 
-    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.25),
+    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+    #                       number_of_generations, mutation_rate,
+    #                       store_best_overall_individual=False, elite_size=0.25),
     
-    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.30),
+    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+    #                       number_of_generations, mutation_rate,
+    #                       store_best_overall_individual=False, elite_size=0.30),
 ]
 
-labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
+# labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
+labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%"]
 
 number_of_executions = 100
 
