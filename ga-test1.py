@@ -4,27 +4,23 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-class Individual:
-    genetic_code = "" # if we handle the genetic code as chromosomes, we would not destroy good weights at random, however we would not introduce new weights during training, except for random mutations
-    fitness = sys.float_info.min
 
-    def __init__(self, genetic_code, fitness = sys.float_info.min):
-        self.genetic_code = genetic_code
+class Individual:
+    def __init__(self, genetic_code, fitness=-np.inf):
+        self.genetic_code = np.array(genetic_code, dtype=int, copy=True)
         self.fitness_history = []
         self.fitness = fitness
 
-class GeneticSearchSettings:
-    fitness_function = None
-    population_size = -1
-    individual_genectic_size = -1
-    number_of_generations = -1
-    mutation_rate = -1
-    store_best_overall_individual = False
-    elite_size = None  # None → 1 individual | float (0.0–1.0) → fraction of population
+    def copy(self):
+        clone = Individual(self.genetic_code.copy(), self.fitness)
+        clone.fitness_history = self.fitness_history.copy()
+        return clone
 
+
+class GeneticSearchSettings:
     def __init__(self, fitness_function, population_size, individual_genectic_size,
                  number_of_generations, mutation_rate, store_best_overall_individual,
-                 elite_size=None):
+                 elite_size=None, enhancement_top_k=20):
         self.fitness_function = fitness_function
         self.population_size = population_size
         self.individual_genectic_size = individual_genectic_size
@@ -33,132 +29,203 @@ class GeneticSearchSettings:
         self.store_best_overall_individual = store_best_overall_individual
         self.elite_size = elite_size
 
-class GeneticSearch:
+        # Only used in enhanced GA
+        self.enhancement_top_k = enhancement_top_k
 
+
+class GeneticSearch:
     def __init__(self):
         self.fitness_history = []
+        self.rng = np.random.default_rng()
 
     def random_initialization(self, population_size, individual_genectic_size):
-        # TODO validate the parameters
+        return [
+            Individual(self.rng.integers(0, 2, individual_genectic_size))
+            for _ in range(population_size)
+        ]
 
-        rng = np.random.default_rng()
-
-        # to understand this line aks an AI about list comprehension
-        return [Individual(rng.integers(0, 2, individual_genectic_size)) for _ in range(population_size)]
-
-    def compute_fitness_and_find_best_individual(self, population, fitness_function):
-        best_individual = Individual([])
-
+    def compute_fitness_and_sort_population(self, population, fitness_function):
         for individual in population:
             individual.fitness = fitness_function(individual)
 
-            if (best_individual.fitness < individual.fitness):
-                best_individual = individual
+        population.sort(key=lambda ind: ind.fitness, reverse=True)
+        return population[0]
 
-        return best_individual
+    def random_selection_rank_based(self, sorted_population):
+        """
+        Selection by roulette.
+        """
+        n = len(sorted_population)
+        weights = np.arange(n, 0, -1, dtype=float)
+        weights /= weights.sum()
+        idx = self.rng.choice(n, p=weights)
+        return sorted_population[idx]
 
-    def random_selection(self, population):
-        intervals = []
-        sum = 0
+    def standard_crossover(self, parent1, parent2):
+        if len(parent1.genetic_code) <= 1:
+            return Individual(parent1.genetic_code.copy())
 
-        for individual in population:
-            sum = sum + max(individual.fitness, 1e-10)
-            intervals.append(sum)
+        splitting_index = self.rng.integers(1, len(parent1.genetic_code))
+        child_code = np.concatenate((
+            parent1.genetic_code[:splitting_index],
+            parent2.genetic_code[splitting_index:]
+        ))
+        return Individual(child_code)
 
-        rng = np.random.default_rng()
+    def enhancement_crossover(self, parent1, parent2):
+        """
+        Crossover from enhancement phase:
+        Preserves the chromosome structure by cutting it in half.
+        """
+        n = len(parent1.genetic_code)
+        cut = n // 2
 
-        number = rng.uniform(0, sum)
+        if cut == 0 or cut == n:
+            return self.standard_crossover(parent1, parent2)
 
-        for i in range(len(population)):
-            if (number <= intervals[i]):
-                return population[i]
-
-        # this line should never be executed
-        print("ERROR: random selection had no return", sum)
-
-    def reproduce(self, parent1, parent2):
-       rng = np.random.default_rng()
-
-       splitting_index = rng.integers(0, len(parent1.genetic_code))
-
-       return Individual(np.concatenate((parent1.genetic_code[:splitting_index], parent2.genetic_code[splitting_index:])))
+        child_code = np.concatenate((
+            parent1.genetic_code[:cut],
+            parent2.genetic_code[cut:]
+        ))
+        return Individual(child_code)
 
     def mutation(self, individual, mutation_rate):
-        rng = np.random.default_rng()
-
-        number = rng.random()
-
-        if (number < mutation_rate):
-            genetic_code = individual.genetic_code
-            mutation_index = rng.integers(len(genetic_code))
-            genetic_code[mutation_index] = (genetic_code[mutation_index] + 1) % 2
+        if self.rng.random() < mutation_rate:
+            mutation_index = self.rng.integers(len(individual.genetic_code))
+            individual.genetic_code[mutation_index] = 1 - individual.genetic_code[mutation_index]
 
     def _resolve_elite_size(self, elite_size, population_size):
-        """
-        Converts the elite_size setting into a concrete number of individuals.
-
-        Rules:
-            None  → 1 individual (only the best)
-            0.25  → 25% of the population
-            0.50  → 50% of the population
-            0.75  → 75% of the population
-            (any float in 0.0–1.0 is accepted)
-        """
         if elite_size is None:
             return 1
 
+        if isinstance(elite_size, int):
+            if elite_size < 1:
+                raise ValueError(f"elite_size inteiro deve ser >= 1, got: {elite_size!r}")
+            return min(population_size, elite_size)
+
         if isinstance(elite_size, float) and 0.0 <= elite_size <= 1.0:
-            # Ensure at least 1 individual is always kept
-            return max(1, int(population_size * elite_size))
+            return max(1, int(round(population_size * elite_size)))
 
         raise ValueError(
-            f"elite_size must be None or a float between 0.0 and 1.0, got: {elite_size!r}"
+            f"elite_size must be None, int >= 1, or float between 0.0 and 1.0, got: {elite_size!r}"
         )
 
+    def _update_best(self, best_individual, generation_best_individual, store_best_overall_individual):
+        if store_best_overall_individual:
+            if best_individual.fitness < generation_best_individual.fitness:
+                return generation_best_individual.copy()
+            return best_individual
+        return generation_best_individual.copy()
+
+    def _standard_next_generation(self, population, settings, elite_count):
+        next_population = [ind.copy() for ind in population[:elite_count]]
+
+        while len(next_population) < settings.population_size:
+            parent1 = self.random_selection_rank_based(population)
+            parent2 = self.random_selection_rank_based(population)
+            child = self.standard_crossover(parent1, parent2)
+            self.mutation(child, settings.mutation_rate)
+            next_population.append(child)
+
+        return next_population
+
+    def _enhancement_phase(self, ranked_population, settings):
+        """
+        Takes the top best individuals and generates enhanced children.
+        """
+        top_k = min(settings.enhancement_top_k, len(ranked_population))
+        top_group = ranked_population[:top_k]
+
+        enhanced_population = []
+        while len(enhanced_population) < top_k:
+            parent1 = self.random_selection_rank_based(top_group)
+            parent2 = self.random_selection_rank_based(top_group)
+            child = self.enhancement_crossover(parent1, parent2)
+            self.mutation(child, settings.mutation_rate)
+            enhanced_population.append(child)
+
+        self.compute_fitness_and_sort_population(enhanced_population, settings.fitness_function)
+        return enhanced_population
+
+    def _modified_elitism(self, normal_population, enhanced_population, elite_count):
+        """
+        The best individuals from the normal population and the enhanced population
+        compete against each other. Only the top ones survive.
+        """
+        candidates = [ind.copy() for ind in normal_population[:elite_count]]
+        candidates.extend(ind.copy() for ind in enhanced_population[:elite_count])
+
+        candidates.sort(key=lambda ind: ind.fitness, reverse=True)
+        return [ind.copy() for ind in candidates[:elite_count]]
+
     def geneticSearch(self, settings):
-        # Cleans the fitness history on every run
+        """
+        Conventional GA.
+        """
         self.fitness_history = []
+        elite_count = self._resolve_elite_size(settings.elite_size, settings.population_size)
 
-        # Resolve the concrete elite count from the setting
-        n_elite = self._resolve_elite_size(settings.elite_size, settings.population_size)
+        population = self.random_initialization(
+            settings.population_size,
+            settings.individual_genectic_size
+        )
 
-        # Initialize population randomly
-        population = self.random_initialization(settings.population_size, settings.individual_genectic_size)
-
-        # Evaluate fitness for the initial population and find the best individual
-        best_individual = self.compute_fitness_and_find_best_individual(population, settings.fitness_function)
-
-        # Add the best individual from the initial population to the fitness history
+        best_individual = self.compute_fitness_and_sort_population(population, settings.fitness_function)
         self.fitness_history.append(best_individual.fitness)
 
-        for generation in range(settings.number_of_generations):
+        for _ in range(settings.number_of_generations):
+            population = self._standard_next_generation(population, settings, elite_count)
+            generation_best_individual = self.compute_fitness_and_sort_population(population, settings.fitness_function)
+            best_individual = self._update_best(
+                best_individual,
+                generation_best_individual,
+                settings.store_best_overall_individual
+            )
+            self.fitness_history.append(best_individual.fitness)
 
-            # Sort population by fitness in descending order so the elite can be sliced easily
-            population.sort(key=lambda ind: ind.fitness, reverse=True)
+        return best_individual
 
-            # Carry the best n_elite individuals directly to the next generation (elitism)
-            next_population = population[:n_elite]
+    def enhancedGeneticSearch(self, settings):
+        """
+        Enhanced GA with enhancement phase + modified elitism.
+        """
+        self.fitness_history = []
+        elite_count = self._resolve_elite_size(settings.elite_size, settings.population_size)
+
+        population = self.random_initialization(
+            settings.population_size,
+            settings.individual_genectic_size
+        )
+
+        best_individual = self.compute_fitness_and_sort_population(population, settings.fitness_function)
+        self.fitness_history.append(best_individual.fitness)
+
+        for _ in range(settings.number_of_generations):
+            ranked_population = population
+
+            # Enhancement phase
+            enhanced_population = self._enhancement_phase(ranked_population, settings)
+
+            # Modified elitism - where normal + enhanced compete
+            elites = self._modified_elitism(ranked_population, enhanced_population, elite_count)
+
+            next_population = elites
 
             # Fill the rest of the next generation with children
             while len(next_population) < settings.population_size:
-                parent1 = self.random_selection(population)
-                parent2 = self.random_selection(population)
-                child = self.reproduce(parent1, parent2)
+                parent1 = self.random_selection_rank_based(ranked_population)
+                parent2 = self.random_selection_rank_based(ranked_population)
+                child = self.standard_crossover(parent1, parent2)
                 self.mutation(child, settings.mutation_rate)
                 next_population.append(child)
 
             population = next_population
-
-            # Evaluate fitness for the new generation and find its best individual
-            generation_best_individual = self.compute_fitness_and_find_best_individual(population, settings.fitness_function)
-
-            # Update the best overall individual depending on the chosen strategy
-            if settings.store_best_overall_individual:
-                if best_individual.fitness < generation_best_individual.fitness:
-                    best_individual = generation_best_individual
-            else:
-                best_individual = generation_best_individual
-
+            generation_best_individual = self.compute_fitness_and_sort_population(population, settings.fitness_function)
+            best_individual = self._update_best(
+                best_individual,
+                generation_best_individual,
+                settings.store_best_overall_individual
+            )
             self.fitness_history.append(best_individual.fitness)
 
         return best_individual
@@ -246,6 +313,30 @@ def plot_chart_with_error(averages, error_bars, labels):
   plt.tight_layout()
   plt.show()
 
+# function generated by an AI
+def plot_comparison_chart(standard_averages, standard_errors,
+                          enhanced_averages, enhanced_errors, labels):
+    x = np.arange(len(labels))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+
+    ax.errorbar(x - width/2, standard_averages, yerr=standard_errors,
+                fmt='o', capsize=5, label='Conventional GA')
+
+    ax.errorbar(x + width/2, enhanced_averages, yerr=enhanced_errors,
+                fmt='o', capsize=5, label='Enhanced GA')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=0)
+    ax.set_xlabel('Elitism')
+    ax.set_ylabel('Fitness')
+    ax.set_title('Conventional GA vs Enhanced GA')
+    ax.grid(True)
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
 
 # ── Training settings ──────────────────────────────────────────────────────────
 fit_ones         = fitness_ones
@@ -254,11 +345,14 @@ fit_center_block = fitness_center_block
 fit_royal_road   = fitness_royal_road
 fit_parity       = fitness_parity
 population_size          = 50
-individual_genectic_size = 100
+individual_genectic_size = 200
 number_of_generations    = 100
-mutation_rate            = 0.1
+mutation_rate            = 0.05
 
 fit_random       = fitness_random(individual_genectic_size)
+
+elite_levels = [4, 8, 12]
+labels = [f"Elite: {e}" for e in elite_levels]
 
 #   elite_size options:
 #   None  → apenas 1 indivíduo (o melhor da geração)
@@ -266,59 +360,72 @@ fit_random       = fitness_random(individual_genectic_size)
 #   0.10  → 10 % da população
 #   e assim em diante
 
-test_settings = [
-    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.05),
-
-    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.10),
-
-    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                          number_of_generations, mutation_rate,
-                          store_best_overall_individual=False, elite_size=0.15),
-
-    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-    #                       number_of_generations, mutation_rate,
-    #                       store_best_overall_individual=False, elite_size=0.20),
-
-    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-    #                       number_of_generations, mutation_rate,
-    #                       store_best_overall_individual=False, elite_size=0.25),
-    
-    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-    #                       number_of_generations, mutation_rate,
-    #                       store_best_overall_individual=False, elite_size=0.30),
+standard_settings = [
+    GeneticSearchSettings(
+        fit_random, population_size, individual_genectic_size,
+        number_of_generations, mutation_rate,
+        store_best_overall_individual=False,
+        elite_size=e
+    )
+    for e in elite_levels
 ]
 
-# labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
-labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%"]
+enhanced_settings = [
+    GeneticSearchSettings(
+        fit_random, population_size, individual_genectic_size,
+        number_of_generations, mutation_rate,
+        store_best_overall_individual=False,
+        elite_size=e,
+        enhancement_top_k=20
+    )
+    for e in elite_levels
+]
 
 number_of_executions = 100
 
 # ── Statistics and chart data ──────────────────────────────────────────────────
-averages = []
-errors   = []
+standard_averages = []
+standard_errors = []
 
-for settings, label in zip(test_settings, labels):
+enhanced_averages = []
+enhanced_errors = []
 
-    best_individuals_of_each_test = []
-    chart_data = []
+for std_settings, enh_settings, label in zip(standard_settings, enhanced_settings, labels):
 
-    for i in range(number_of_executions):
-        gs         = GeneticSearch()
-        individual = gs.geneticSearch(settings)
+    std_chart_data = []
+    enh_chart_data = []
+
+    for _ in range(number_of_executions):
+        gs_std = GeneticSearch()
+        best_std = gs_std.geneticSearch(std_settings)
+        std_chart_data.append(best_std.fitness)
+
+        gs_enh = GeneticSearch()
+        best_enh = gs_enh.enhancedGeneticSearch(enh_settings)
+        enh_chart_data.append(best_enh.fitness)
+
         print(">", end="", flush=True)
-        best_individuals_of_each_test.append(individual)
-        chart_data.append(individual.fitness)
 
-    average = np.average(chart_data)
-    error   = np.std(chart_data) / np.sqrt(len(chart_data))
+    std_average = np.average(std_chart_data)
+    std_error = np.std(std_chart_data) / np.sqrt(len(std_chart_data))
 
-    averages.append(average)
-    errors.append(error)
+    enh_average = np.average(enh_chart_data)
+    enh_error = np.std(enh_chart_data) / np.sqrt(len(enh_chart_data))
 
-    print(f"  [{label}]  Average: {average:.4f},  error: {error:.4f}")
+    standard_averages.append(std_average)
+    standard_errors.append(std_error)
 
-plot_chart_with_error(averages, errors, labels)
+    enhanced_averages.append(enh_average)
+    enhanced_errors.append(enh_error)
+
+    print(f"\n[{label}]")
+    print(f"  Conventional GA -> Average: {std_average:.4f}, error: {std_error:.4f}")
+    print(f"  Enhanced GA     -> Average: {enh_average:.4f}, error: {enh_error:.4f}")
+
+# plot_chart_with_error(averages, errors, labels)
+
+plot_comparison_chart(
+    standard_averages, standard_errors,
+    enhanced_averages, enhanced_errors,
+    labels
+)
