@@ -128,7 +128,10 @@ class GeneticSearch:
         # Evaluate fitness for the initial population and find the best individual
         best_individual = self.compute_fitness_and_find_best_individual(population, settings.fitness_function)
 
-        for generation in range(1, settings.number_of_generations):
+        # Add the best individual from the initial population to the fitness history
+        self.fitness_history.append(best_individual.fitness)
+
+        for generation in range(settings.number_of_generations):
 
             # Sort population by fitness in descending order so the elite can be sliced easily
             population.sort(key=lambda ind: ind.fitness, reverse=True)
