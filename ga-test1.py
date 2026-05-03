@@ -35,7 +35,8 @@ class GeneticSearchSettings:
 
 class GeneticSearch:
 
-    fitness_history = []
+    def __init__(self):
+        self.fitness_history = []
 
     def random_initialization(self, population_size, individual_genectic_size):
         # TODO validate the parameters
@@ -115,6 +116,9 @@ class GeneticSearch:
         )
 
     def geneticSearch(self, settings):
+        # Cleans the fitness history on every run
+        self.fitness_history = []
+
         # Resolve the concrete elite count from the setting
         n_elite = self._resolve_elite_size(settings.elite_size, settings.population_size)
 
