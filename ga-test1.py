@@ -1,6 +1,3 @@
-from abc import ABC, abstractmethod
-
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -201,7 +198,7 @@ class GeneticSearch:
         self.fitness_history.append(best_individual.fitness)
 
         for _ in range(settings.number_of_generations):
-            ranked_population = population
+            ranked_population = sorted(population, key=lambda ind: ind.fitness, reverse=True)
 
             # Enhancement phase
             enhanced_population = self._enhancement_phase(ranked_population, settings)
@@ -345,7 +342,7 @@ fit_center_block = fitness_center_block
 fit_royal_road   = fitness_royal_road
 fit_parity       = fitness_parity
 population_size          = 50
-individual_genectic_size = 200
+individual_genectic_size = 100
 number_of_generations    = 100
 mutation_rate            = 0.05
 
