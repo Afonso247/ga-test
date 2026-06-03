@@ -352,13 +352,12 @@ def plot_chart_with_error(averages, error_bars, labels):
 def plot_comparison_chart(standard_averages, standard_errors,
                           enhanced_averages, enhanced_errors, labels):
     x = np.arange(len(labels))
-    width = 0.35
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
-    ax.errorbar(x - width/2, standard_averages, yerr=standard_errors,
+    ax.errorbar(x, standard_averages, yerr=standard_errors,
                 fmt='o', capsize=5, label='Conventional GA')
-    ax.errorbar(x + width/2, enhanced_averages, yerr=enhanced_errors,
-                fmt='o', capsize=5, label='Enhanced GA')
+    ax.errorbar(x, enhanced_averages, yerr=enhanced_errors,
+                fmt='s', capsize=5, label='Enhanced GA')
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=0)
     ax.set_xlabel('Elitism')
