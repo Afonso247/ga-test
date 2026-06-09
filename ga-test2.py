@@ -371,9 +371,9 @@ def plot_comparison_chart(standard_averages, standard_errors,
 
 # ── Configurações ──────────────────────────────────────────────────────────────
 
-population_size          = 50
-individual_genectic_size = 100
-number_of_generations    = 100
+population_size          = 100
+individual_genectic_size = 200
+number_of_generations    = 200
 mutation_rate            = 0.1
 
 fit_random = fitness_random(individual_genectic_size)
@@ -384,8 +384,8 @@ fit_random = fitness_random(individual_genectic_size)
 #   0.10  → 10 % da população
 #   e assim em diante
 
-elite_levels = [0.05, 0.10, 0.15]
-labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%"]
+elite_levels = [None, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
+labels = ["Elite: 1", "Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
 
 standard_settings = [
     GeneticSearchSettings(
