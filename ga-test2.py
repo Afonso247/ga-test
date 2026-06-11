@@ -93,24 +93,16 @@ class GeneticSearch:
             ) % 2
 
     def _resolve_elite_size(self, elite_size, population_size):
-        """
-        Converts elite_size into a concrete number of individuals.
-
-        Rules:
-            None       → 1 individual
-            int >= 1   → direct number
-            float 0–1  → fraction of population
-        """
         if elite_size is None:
             return 1
         if isinstance(elite_size, int):
-            if elite_size < 1:
-                raise ValueError(f"elite_size int must be >= 1, got: {elite_size!r}")
+            if elite_size < 0:
+                raise ValueError(f"elite_size int must be >= 0, got: {elite_size!r}")
             return min(population_size, elite_size)
         if isinstance(elite_size, float) and 0.0 <= elite_size <= 1.0:
             return max(1, int(population_size * elite_size))
         raise ValueError(
-            f"elite_size must be None, int >= 1, or float between 0.0 and 1.0, got: {elite_size!r}"
+            f"elite_size must be None, int >= 0, or float between 0.0 and 1.0, got: {elite_size!r}"
         )
 
     def _update_best(self, best_individual, generation_best, store_best_overall):
@@ -353,11 +345,16 @@ def plot_comparison_chart(standard_averages, standard_errors,
                           enhanced_averages, enhanced_errors, labels):
     x = np.arange(len(labels))
 
+    enh_mask = [i for i, v in enumerate(enhanced_averages) if v is not None]
+    x_enh    = x[enh_mask]
+    enh_avg  = [enhanced_averages[i] for i in enh_mask]
+    enh_err  = [enhanced_errors[i]   for i in enh_mask]
+
     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
     ax.errorbar(x, standard_averages, yerr=standard_errors,
                 fmt='o', capsize=5, label='Conventional GA')
-    ax.errorbar(x, enhanced_averages, yerr=enhanced_errors,
-                fmt='s', capsize=5, label='Enhanced GA')
+    ax.errorbar(x_enh, enh_avg, yerr=enh_err,
+                fmt='s', capsize=5, label='Enhanced GA')     # ← só plota onde há dados
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=0)
     ax.set_xlabel('Elitism')
@@ -384,8 +381,8 @@ fit_random = fitness_random(individual_genectic_size)
 #   0.10  → 10 % da população
 #   e assim em diante
 
-elite_levels = [None, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
-labels = ["Elite: 1", "Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
+elite_levels = [0, None, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
+labels = ["Elite: 0", "Elite: 1", "Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
 
 standard_settings = [
     GeneticSearchSettings(
@@ -427,26 +424,34 @@ for std_settings, enh_settings, label in zip(standard_settings, enhanced_setting
         best_std = gs_std.geneticSearch(std_settings)
         std_chart_data.append(best_std.fitness)
 
-        gs_enh = GeneticSearch()
-        best_enh = gs_enh.enhancedGeneticSearch(enh_settings)
-        enh_chart_data.append(best_enh.fitness)
+        if std_settings.elite_size != 0:
+            gs_enh = GeneticSearch()
+            best_enh = gs_enh.enhancedGeneticSearch(enh_settings)
+            enh_chart_data.append(best_enh.fitness)
 
         print(">", end="", flush=True)
 
     std_average = np.average(std_chart_data)
     std_error   = np.std(std_chart_data) / np.sqrt(len(std_chart_data))
 
-    enh_average = np.average(enh_chart_data)
-    enh_error   = np.std(enh_chart_data) / np.sqrt(len(enh_chart_data))
-
     standard_averages.append(std_average)
     standard_errors.append(std_error)
-    enhanced_averages.append(enh_average)
-    enhanced_errors.append(enh_error)
+
+    if std_settings.elite_size != 0:
+        enh_average = np.average(enh_chart_data)
+        enh_error   = np.std(enh_chart_data) / np.sqrt(len(enh_chart_data))
+        enhanced_averages.append(enh_average)
+        enhanced_errors.append(enh_error)
+    else:
+        enhanced_averages.append(None)
+        enhanced_errors.append(0)
 
     print(f"\n[{label}]")
     print(f"  Conventional GA -> Average: {std_average:.4f}, error: {std_error:.4f}")
-    print(f"  Enhanced GA     -> Average: {enh_average:.4f}, error: {enh_error:.4f}")
+    if std_settings.elite_size != 0:
+        print(f"  Enhanced GA     -> Average: {enh_average:.4f}, error: {enh_error:.4f}")
+    else:
+        print(f"  Enhanced GA     -> N/A (no elitism)")
 
 plot_comparison_chart(
     standard_averages, standard_errors,
