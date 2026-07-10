@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 
 class Individual:
     genetic_code = "" # if we handle the genetic code as chromosomes, we would not destroy good weights at random, however we would not introduce new weights during training, except for random mutations
-    fitness = float("-inf")
+    fitness = sys.float_info.min
 
-    def __init__(self, genetic_code, fitness = float("-inf")):
+    def __init__(self, genetic_code, fitness = sys.float_info.min):
         self.genetic_code = genetic_code
         self.fitness_history = []
         self.fitness = fitness
@@ -59,22 +59,22 @@ class GeneticSearch:
 
     def random_selection(self, population):
         intervals = []
-        total = 0
+        sum = 0
 
         for individual in population:
-            total = total + max(individual.fitness, 1e-10)
-            intervals.append(total)
+            sum = sum + max(individual.fitness, 1e-10)
+            intervals.append(sum)
 
         rng = np.random.default_rng()
 
-        number = rng.uniform(0, total)
+        number = rng.uniform(0, sum)
 
         for i in range(len(population)):
             if (number <= intervals[i]):
                 return population[i]
 
         # this line should never be executed
-        print("ERROR: random selection had no return", total)
+        print("ERROR: random selection had no return", sum)
 
     def reproduce(self, parent1, parent2):
        rng = np.random.default_rng()
@@ -86,9 +86,12 @@ class GeneticSearch:
     def mutation(self, individual, mutation_rate):
         rng = np.random.default_rng()
 
-        genetic_code = individual.genetic_code
-        mutation_mask = rng.random(len(genetic_code)) < mutation_rate
-        genetic_code[mutation_mask] = (genetic_code[mutation_mask] + 1) % 2
+        number = rng.random()
+
+        if (number < mutation_rate):
+            genetic_code = individual.genetic_code
+            mutation_index = rng.integers(len(genetic_code))
+            genetic_code[mutation_index] = (genetic_code[mutation_index] + 1) % 2
 
     def _resolve_elite_size(self, elite_size, population_size):
         """
@@ -244,83 +247,78 @@ def plot_chart_with_error(averages, error_bars, labels):
   plt.show()
 
 
-def main():
-    # ── Training settings ──────────────────────────────────────────────────────────
-    fit_ones         = fitness_ones
-    fit_zeros        = fitness_zeros
-    fit_center_block = fitness_center_block
-    fit_royal_road   = fitness_royal_road
-    fit_parity       = fitness_parity
-    population_size          = 50
-    individual_genectic_size = 100
-    number_of_generations    = 100
-    mutation_rate            = 0.1
+# ── Training settings ──────────────────────────────────────────────────────────
+fit_ones         = fitness_ones
+fit_zeros        = fitness_zeros
+fit_center_block = fitness_center_block
+fit_royal_road   = fitness_royal_road
+fit_parity       = fitness_parity
+population_size          = 50
+individual_genectic_size = 100
+number_of_generations    = 100
+mutation_rate            = 0.1
 
-    fit_random       = fitness_random(individual_genectic_size)
+fit_random       = fitness_random(individual_genectic_size)
 
-    #   elite_size options:
-    #   None  → apenas 1 indivíduo (o melhor da geração)
-    #   0.05  → 5 % da população
-    #   0.10  → 10 % da população
-    #   e assim em diante
+#   elite_size options:
+#   None  → apenas 1 indivíduo (o melhor da geração)
+#   0.05  → 5 % da população
+#   0.10  → 10 % da população
+#   e assim em diante
 
-    test_settings = [
-        GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                              number_of_generations, mutation_rate,
-                              store_best_overall_individual=False, elite_size=0.05),
+test_settings = [
+    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+                          number_of_generations, mutation_rate,
+                          store_best_overall_individual=False, elite_size=0.05),
 
-        GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                              number_of_generations, mutation_rate,
-                              store_best_overall_individual=False, elite_size=0.10),
+    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+                          number_of_generations, mutation_rate,
+                          store_best_overall_individual=False, elite_size=0.10),
 
-        GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-                              number_of_generations, mutation_rate,
-                              store_best_overall_individual=False, elite_size=0.15),
+    GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+                          number_of_generations, mutation_rate,
+                          store_best_overall_individual=False, elite_size=0.15),
 
-        # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-        #                       number_of_generations, mutation_rate,
-        #                       store_best_overall_individual=False, elite_size=0.20),
+    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+    #                       number_of_generations, mutation_rate,
+    #                       store_best_overall_individual=False, elite_size=0.20),
 
-        # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-        #                       number_of_generations, mutation_rate,
-        #                       store_best_overall_individual=False, elite_size=0.25),
+    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+    #                       number_of_generations, mutation_rate,
+    #                       store_best_overall_individual=False, elite_size=0.25),
+    
+    # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
+    #                       number_of_generations, mutation_rate,
+    #                       store_best_overall_individual=False, elite_size=0.30),
+]
 
-        # GeneticSearchSettings(fit_random, population_size, individual_genectic_size,
-        #                       number_of_generations, mutation_rate,
-        #                       store_best_overall_individual=False, elite_size=0.30),
-    ]
+# labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
+labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%"]
 
-    # labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
-    labels = ["Elite: 5%", "Elite: 10%", "Elite: 15%"]
+number_of_executions = 100
 
-    number_of_executions = 100
+# ── Statistics and chart data ──────────────────────────────────────────────────
+averages = []
+errors   = []
 
-    # ── Statistics and chart data ──────────────────────────────────────────────────
-    averages = []
-    errors   = []
+for settings, label in zip(test_settings, labels):
 
-    for settings, label in zip(test_settings, labels):
+    best_individuals_of_each_test = []
+    chart_data = []
 
-        best_individuals_of_each_test = []
-        chart_data = []
+    for i in range(number_of_executions):
+        gs         = GeneticSearch()
+        individual = gs.geneticSearch(settings)
+        print(">", end="", flush=True)
+        best_individuals_of_each_test.append(individual)
+        chart_data.append(individual.fitness)
 
-        for i in range(number_of_executions):
-            gs         = GeneticSearch()
-            individual = gs.geneticSearch(settings)
-            print(">", end="", flush=True)
-            best_individuals_of_each_test.append(individual)
-            chart_data.append(individual.fitness)
+    average = np.average(chart_data)
+    error   = np.std(chart_data) / np.sqrt(len(chart_data))
 
-        average = np.average(chart_data)
-        error   = np.std(chart_data) / np.sqrt(len(chart_data))
+    averages.append(average)
+    errors.append(error)
 
-        averages.append(average)
-        errors.append(error)
+    print(f"  [{label}]  Average: {average:.4f},  error: {error:.4f}")
 
-        print(f"  [{label}]  Average: {average:.4f},  error: {error:.4f}")
-
-    plot_chart_with_error(averages, errors, labels)
-
-
-if __name__ == "__main__":
-    main()
+plot_chart_with_error(averages, errors, labels)
