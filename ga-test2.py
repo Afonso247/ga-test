@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # ── Individual ────────────────────────────────────────────────────────────────
 
 class Individual:
-    def __init__(self, genetic_code, fitness=sys.float_info.min, age=0):
+    def __init__(self, genetic_code, fitness=-np.inf, age=0):
         self.genetic_code = genetic_code
         self.fitness_history = []
         self.fitness = fitness
@@ -40,6 +40,10 @@ class GeneticSearchSettings:
         #   0.7  → medium penalty  (~30 % per generation)
         #   0.5  → strong penalty  (~50 % per generation)
         #   1.0  → no aging
+        if not isinstance(age_decay, (int, float)) or not (0.0 < age_decay <= 1.0):
+            raise ValueError(
+                f"age_decay must be a float in (0.0, 1.0], got: {age_decay!r}"
+            )
         self.age_decay = age_decay
 
 
@@ -61,10 +65,10 @@ class GeneticSearch:
 
     def compute_fitness_and_find_best_individual(self, population, fitness_function):
         """Evaluates everyone's fitness and returns the best result. Used by conventional GA."""
-        best_individual = Individual([])
+        best_individual = None
         for individual in population:
             individual.fitness = fitness_function(individual)
-            if best_individual.fitness < individual.fitness:
+            if best_individual is None or best_individual.fitness < individual.fitness:
                 best_individual = individual
         return best_individual
 
@@ -181,7 +185,9 @@ class GeneticSearch:
 
         for _ in range(settings.number_of_generations):
             population.sort(key=lambda ind: ind.fitness, reverse=True)
-            next_population = population[:n_elite]
+            # Copia os elites para evitar aliasing entre gerações
+            # (consistente com o comportamento do Enhanced GA)
+            next_population = [ind.copy() for ind in population[:n_elite]]
 
             while len(next_population) < settings.population_size:
                 parent1 = self.random_selection(population)
@@ -266,31 +272,31 @@ class GeneticSearch:
         return best_individual
 
 
-# ── Funções de fitness ─────────────────────────────────────────────────────────
+# ── Funções de fitness (vetorizadas com NumPy) ─────────────────────────────────
 
 def fitness_ones(individual):
-    return sum([x == 1 for x in individual.genetic_code])
+    return int(np.sum(individual.genetic_code == 1))
 
 def fitness_zeros(individual):
-    return sum([x == 0 for x in individual.genetic_code])
+    return int(np.sum(individual.genetic_code == 0))
 
 def fitness_center_block(individual):
     code = individual.genetic_code
     n = len(code)
-    target = [1 if n//4 <= i < 3*n//4 else 0 for i in range(n)]
-    return sum(g == t for g, t in zip(code, target))
+    target = np.array([1 if n // 4 <= i < 3 * n // 4 else 0 for i in range(n)])
+    return int(np.sum(code == target))
 
 def fitness_royal_road(individual, block_size=5):
     code = individual.genetic_code
-    score = 0
-    for i in range(0, len(code), block_size):
-        block = code[i:i+block_size]
-        if all(b == 1 for b in block):
-            score += block_size
-    return score
+    n = len(code)
+    # Descarta o bloco final incompleto, se houver, para permitir vetorização
+    usable_len = (n // block_size) * block_size
+    blocks = code[:usable_len].reshape(-1, block_size)
+    full_blocks = np.all(blocks == 1, axis=1)
+    return int(np.sum(full_blocks) * block_size)
 
 def fitness_parity(individual):
-    ones = sum(individual.genetic_code)
+    ones = int(np.sum(individual.genetic_code))
     penalty = 0 if ones % 2 == 0 else 1
     return ones - penalty * len(individual.genetic_code)
 
@@ -305,7 +311,7 @@ def fitness_random(genetic_size, seed=None):
     print(f"[Alvo gerado] {target[:20]}...  (primeiros 20 bits)")
 
     def fitness_random_target(individual):
-        return sum(g == t for g, t in zip(individual.genetic_code, target))
+        return int(np.sum(individual.genetic_code == target))
 
     return fitness_random_target
 
