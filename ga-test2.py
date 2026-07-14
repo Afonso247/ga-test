@@ -90,11 +90,13 @@ class GeneticSearch:
         )
 
     def mutation(self, individual, mutation_rate):
-        if self.rng.random() < mutation_rate:
-            mutation_index = self.rng.integers(len(individual.genetic_code))
-            individual.genetic_code[mutation_index] = (
-                individual.genetic_code[mutation_index] + 1
-            ) % 2
+        """
+        Bit-flip: cada gene tem probabilidade independente
+        `mutation_rate` de ser invertido (0↔1).
+        """
+        genetic_code = individual.genetic_code
+        flip_mask = self.rng.random(len(genetic_code)) < mutation_rate
+        genetic_code[flip_mask] = 1 - genetic_code[flip_mask]
 
     def _resolve_elite_size(self, elite_size, population_size):
         if elite_size is None:
@@ -135,34 +137,24 @@ class GeneticSearch:
 
     # ── Seleção por ranking com aging (Enhanced GA) ───────────────────────────
 
-    def random_selection_rank_based_with_aging(self, sorted_population, age_decay):
+    def random_selection_rank_based_with_aging(self, population, age_decay):
         """
         Roleta por ranking com penalidade de envelhecimento.
 
-        O peso de cada indivíduo é:
-            peso = rank_weight × (age_decay ^ age)
-
-        Exemplo com age_decay=0.9:
-            age=0  → fator 1.00  (sem penalidade — indivíduo novo)
-            age=1  → fator 0.90
-            age=5  → fator 0.59
-            age=10 → fator 0.35
         """
-        n = len(sorted_population)
-        rank_weights = np.arange(n, 0, -1, dtype=float)
-        age_penalties = np.array([age_decay ** ind.age for ind in sorted_population])
+        total = 0
+        intervals = []
+        for individual in population:
+            aged_fitness = individual.fitness * (age_decay ** individual.age)
+            total += max(aged_fitness, 1e-10)
+            intervals.append(total)
 
-        weights = rank_weights * age_penalties
-        total = weights.sum()
+        number = self.rng.uniform(0, total)
+        for i, threshold in enumerate(intervals):
+            if number <= threshold:
+                return population[i]
 
-        if total == 0:
-            # Fallback: distribuição uniforme se todos os pesos zerarem
-            weights = np.ones(n, dtype=float) / n
-        else:
-            weights /= total
-
-        idx = self.rng.choice(n, p=weights)
-        return sorted_population[idx]
+        print("ERROR: random_selection_with_aging sem retorno", total)
 
     # ── GA Convencional ───────────────────────────────────────────────────────
 
@@ -185,8 +177,6 @@ class GeneticSearch:
 
         for _ in range(settings.number_of_generations):
             population.sort(key=lambda ind: ind.fitness, reverse=True)
-            # Copia os elites para evitar aliasing entre gerações
-            # (consistente com o comportamento do Enhanced GA)
             next_population = [ind.copy() for ind in population[:n_elite]]
 
             while len(next_population) < settings.population_size:
@@ -237,27 +227,18 @@ class GeneticSearch:
                 population, key=lambda ind: ind.fitness, reverse=True
             )
 
-            # ── Elitismo com aging ─────────────────────────────────────────────
-            # Copia os melhores para a próxima geração e incrementa a idade deles.
             elites = [ind.copy() for ind in ranked_population[:n_elite]]
             for elite in elites:
                 elite.age += 1
 
             next_population = elites
 
-            # ── Preenchimento via seleção com penalidade de idade ──────────────
-            # Indivíduos mais velhos têm menor chance de ser escolhidos como pais,
-            # favorecendo material genético mais recente.
             while len(next_population) < settings.population_size:
-                parent1 = self.random_selection_rank_based_with_aging(
-                    ranked_population, settings.age_decay
-                )
-                parent2 = self.random_selection_rank_based_with_aging(
-                    ranked_population, settings.age_decay
-                )
+                parent1 = self.random_selection_rank_based_with_aging(ranked_population, settings.age_decay)
+                parent2 = self.random_selection_rank_based_with_aging(ranked_population, settings.age_decay)
                 child = self.reproduce(parent1, parent2)
                 self.mutation(child, settings.mutation_rate)
-                child.age = 0  # filhos nascem sem histórico de sobrevivência
+                child.age = 0
                 next_population.append(child)
 
             population = next_population
@@ -289,7 +270,6 @@ def fitness_center_block(individual):
 def fitness_royal_road(individual, block_size=5):
     code = individual.genetic_code
     n = len(code)
-    # Descarta o bloco final incompleto, se houver, para permitir vetorização
     usable_len = (n // block_size) * block_size
     blocks = code[:usable_len].reshape(-1, block_size)
     full_blocks = np.all(blocks == 1, axis=1)
@@ -300,52 +280,7 @@ def fitness_parity(individual):
     penalty = 0 if ones % 2 == 0 else 1
     return ones - penalty * len(individual.genetic_code)
 
-def fitness_random(genetic_size, seed=None):
-    """
-    Gera um alvo binário aleatório UMA ÚNICA VEZ.
-    Retorna uma função fitness que avalia a semelhança com esse alvo fixo.
-    O alvo é compartilhado por todas as execuções e variações de elite.
-    """
-    rng = np.random.default_rng(seed)
-    target = rng.integers(0, 2, genetic_size)
-    print(f"[Alvo gerado] {target[:20]}...  (primeiros 20 bits)")
-
-    def fitness_random_target(individual):
-        return int(np.sum(individual.genetic_code == target))
-
-    return fitness_random_target
-
-
 # ── Visualizações ──────────────────────────────────────────────────────────────
-
-def plot_chart(data):
-    y_data = data
-    x_data = np.arange(1, len(data) + 1)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(x_data, y_data, marker='o', linestyle='-', color='skyblue',
-            linewidth=2, label='Fitness')
-    ax.set_title('Fitness Evolution During Training', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Generations', fontsize=12)
-    ax.set_ylabel('Fitness', fontsize=12)
-    ax.grid(True, linestyle='--', alpha=0.7)
-    ax.legend(loc='upper left')
-    ax.tick_params(axis='both', which='major', labelsize=10)
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_chart_with_error(averages, error_bars, labels):
-    plt.figure(figsize=(5, 5), dpi=150)
-    plt.errorbar(labels, averages, yerr=error_bars, fmt='o', capsize=5)
-    plt.xlabel('Settings')
-    plt.ylabel('Fitness')
-    plt.title('Averages with Error Bars')
-    plt.grid(True)
-    plt.xticks(rotation='vertical')
-    plt.tight_layout()
-    plt.show()
-
 
 def plot_comparison_chart(standard_averages, standard_errors,
                           enhanced_averages, enhanced_errors, labels):
@@ -374,12 +309,10 @@ def plot_comparison_chart(standard_averages, standard_errors,
 
 # ── Configurações ──────────────────────────────────────────────────────────────
 
-population_size          = 100
-individual_genectic_size = 200
-number_of_generations    = 200
+population_size          = 50
+individual_genectic_size = 100
+number_of_generations    = 100
 mutation_rate            = 0.1
-
-fit_random = fitness_random(individual_genectic_size)
 
 #   elite_size options:
 #   None  → apenas 1 indivíduo (o melhor da geração)
@@ -387,12 +320,12 @@ fit_random = fitness_random(individual_genectic_size)
 #   0.10  → 10 % da população
 #   e assim em diante
 
-elite_levels = [0, None, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
-labels = ["Elite: 0", "Elite: 1", "Elite: 5%", "Elite: 10%", "Elite: 15%", "Elite: 20%", "Elite: 25%", "Elite: 30%"]
+elite_levels = [0, None, 0.10, 0.20]
+labels = ["Elite: 0", "Elite: 1", "Elite: 10%", "Elite: 20%"]
 
 standard_settings = [
     GeneticSearchSettings(
-        fit_random, population_size, individual_genectic_size,
+        fitness_ones, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
         store_best_overall_individual=False,
         elite_size=e
@@ -402,7 +335,7 @@ standard_settings = [
 
 enhanced_settings = [
     GeneticSearchSettings(
-        fit_random, population_size, individual_genectic_size,
+        fitness_ones, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
         store_best_overall_individual=False,
         elite_size=e,
