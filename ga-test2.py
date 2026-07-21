@@ -9,6 +9,7 @@ class Individual:
         self.genetic_code = genetic_code
         self.fitness_history = []
         self.fitness = fitness
+        self.effective_fitness = fitness
         self.age = age  # the elite aging (Enhanced GA)
 
     def copy(self):
@@ -17,6 +18,7 @@ class Individual:
             self.fitness,
             self.age
         )
+        clone.effective_fitness = self.effective_fitness
         clone.fitness_history = self.fitness_history.copy()
         return clone
 
@@ -72,12 +74,27 @@ class GeneticSearch:
                 best_individual = individual
         return best_individual
 
-    def compute_fitness_and_sort_population(self, population, fitness_function):
-        """Evaluates everyone's fitness, sorts by description, and returns the best. Used by Enhanced GA."""
+    def compute_fitness_and_sort_population(self, population, fitness_function, age_decay=1.0):
+        """
+        Used by Enhanced GA.
+
+        Evaluates RAW fitness for everyone (fitness_function is never told about age),
+        then derives an `effective_fitness = raw_fitness * age_decay ** age` used only
+        to rank/sort the population for elitism and selection purposes.
+
+        Returns the true best individual of the generation by RAW fitness — this is
+        what guarantees an aging elite can never "hide" the fact that it stopped being
+        the actual best, and it's also what `_update_best` should compare against, so
+        the historical best individual can never be lost just because it grew old.
+        """
+        raw_best = None
         for individual in population:
             individual.fitness = fitness_function(individual)
-        population.sort(key=lambda ind: ind.fitness, reverse=True)
-        return population[0]
+            individual.effective_fitness = individual.fitness * (age_decay ** individual.age)
+            if raw_best is None or raw_best.fitness < individual.fitness:
+                raw_best = individual
+        population.sort(key=lambda ind: ind.effective_fitness, reverse=True)
+        return raw_best
 
     def reproduce(self, parent1, parent2):
         """1-point crossover at random position (conventional GA)."""
@@ -135,18 +152,20 @@ class GeneticSearch:
 
         print("ERROR: random_selection sem retorno", total)
 
-    # ── Seleção por ranking com aging (Enhanced GA) ───────────────────────────
+    # ── Seleção proporcional ao fitness JÁ penalizado por idade (Enhanced GA) ─
 
-    def random_selection_rank_based_with_aging(self, population, age_decay):
+    def random_selection_by_effective_fitness(self, population):
         """
-        Roleta por ranking com penalidade de envelhecimento.
-
+        Roleta proporcional ao `effective_fitness` (fitness bruto já multiplicado
+        pela penalidade de idade). Como a penalidade já está embutida no fitness
+        usado aqui — e também no sort feito em `compute_fitness_and_sort_population`
+        — um indivíduo antigo perde peso tanto na seleção quanto no ranking de
+        elitismo, deixando de ocupar uma vaga de elite indefinidamente.
         """
         total = 0
         intervals = []
         for individual in population:
-            aged_fitness = individual.fitness * (age_decay ** individual.age)
-            total += max(aged_fitness, 1e-10)
+            total += max(individual.effective_fitness, 1e-10)
             intervals.append(total)
 
         number = self.rng.uniform(0, total)
@@ -154,7 +173,7 @@ class GeneticSearch:
             if number <= threshold:
                 return population[i]
 
-        print("ERROR: random_selection_with_aging sem retorno", total)
+        print("ERROR: random_selection_by_effective_fitness sem retorno", total)
 
     # ── GA Convencional ───────────────────────────────────────────────────────
 
@@ -204,11 +223,16 @@ class GeneticSearch:
         Enhanced GA com sistema de envelhecimento.
 
         Diferenças em relação ao GA convencional:
-        - Seleção por ranking em vez de proporcional ao fitness.
+        - A penalidade de idade (age_decay ^ age) é aplicada sobre o fitness bruto,
+          gerando um `effective_fitness` usado tanto para ordenar a população
+          (elitismo) quanto para a seleção (`random_selection_by_effective_fitness`).
+          Assim, um elite que envelhece perde peso nos dois lugares, e não apenas na
+          reprodução — o que evita que ele fique "congelado" no topo do ranking.
         - Elites que sobrevivem recebem age += 1 a cada geração.
-        - A penalidade (age_decay ^ age) reduz gradualmente a chance de seleção
-          de elites que dominam a população há muitas gerações consecutivas.
         - Novos filhos sempre nascem com age = 0.
+        - O melhor indivíduo geral (`store_best_overall_individual`) é sempre
+          comparado pelo fitness BRUTO (`.fitness`), nunca pelo `effective_fitness`,
+          então ele nunca é descartado só por ter envelhecido.
         """
         self.fitness_history = []
         n_elite = self._resolve_elite_size(settings.elite_size, settings.population_size)
@@ -217,25 +241,22 @@ class GeneticSearch:
             settings.population_size, settings.individual_genectic_size
         )
 
+        # população inicial: todos com age=0, então effective_fitness == fitness aqui
         best_individual = self.compute_fitness_and_sort_population(
-            population, settings.fitness_function
+            population, settings.fitness_function, settings.age_decay
         )
         self.fitness_history.append(best_individual.fitness)
 
         for _ in range(settings.number_of_generations):
-            ranked_population = sorted(
-                population, key=lambda ind: ind.fitness, reverse=True
-            )
-
-            elites = [ind.copy() for ind in ranked_population[:n_elite]]
+            elites = [ind.copy() for ind in population[:n_elite]]
             for elite in elites:
                 elite.age += 1
 
             next_population = elites
 
             while len(next_population) < settings.population_size:
-                parent1 = self.random_selection_rank_based_with_aging(ranked_population, settings.age_decay)
-                parent2 = self.random_selection_rank_based_with_aging(ranked_population, settings.age_decay)
+                parent1 = self.random_selection_by_effective_fitness(population)
+                parent2 = self.random_selection_by_effective_fitness(population)
                 child = self.reproduce(parent1, parent2)
                 self.mutation(child, settings.mutation_rate)
                 child.age = 0
@@ -243,7 +264,7 @@ class GeneticSearch:
 
             population = next_population
             generation_best = self.compute_fitness_and_sort_population(
-                population, settings.fitness_function
+                population, settings.fitness_function, settings.age_decay
             )
             best_individual = self._update_best(
                 best_individual, generation_best, settings.store_best_overall_individual
@@ -337,14 +358,18 @@ enhanced_settings = [
     GeneticSearchSettings(
         fitness_ones, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
-        store_best_overall_individual=False,
+        store_best_overall_individual=True,   # essencial agora: garante que o melhor
+                                                # indivíduo (por fitness bruto) nunca
+                                                # seja perdido por conta do envelhecimento
         elite_size=e,
-        age_decay=0.9          # fator de decaimento por geração sobrevivida
+        age_decay=0.5          # penalidade mais forte (sugestão 1 do professor);
+                                # combinada com a penalidade embutida no fitness
+                                # (sugestão 2), garante giro real dos elites
     )
     for e in elite_levels
 ]
 
-number_of_executions = 100
+number_of_executions = 50
 
 # ── Coleta de estatísticas ─────────────────────────────────────────────────────
 
