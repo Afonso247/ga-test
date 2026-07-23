@@ -27,7 +27,8 @@ class Individual:
 class GeneticSearchSettings:
     def __init__(self, fitness_function, population_size, individual_genectic_size,
                  number_of_generations, mutation_rate, store_best_overall_individual,
-                 elite_size=None, age_decay=0.9):
+                 elite_size=None, age_decay=0.9,
+                 selection="roulette", tournament_size=3):
         self.fitness_function = fitness_function
         self.population_size = population_size
         self.individual_genectic_size = individual_genectic_size
@@ -35,6 +36,22 @@ class GeneticSearchSettings:
         self.mutation_rate = mutation_rate
         self.store_best_overall_individual = store_best_overall_individual
         self.elite_size = elite_size
+
+        # Método de seleção de pais:
+        #   "roulette"   → proporcional ao fitness (comportamento original)
+        #   "tournament" → torneio de `tournament_size` indivíduos; invariante à
+        #                  escala do fitness
+        if selection not in ("roulette", "tournament"):
+            raise ValueError(
+                f"selection must be 'roulette' or 'tournament', got: {selection!r}"
+            )
+        self.selection = selection
+
+        if not isinstance(tournament_size, int) or tournament_size < 1:
+            raise ValueError(
+                f"tournament_size must be an int >= 1, got: {tournament_size!r}"
+            )
+        self.tournament_size = tournament_size
 
         # Enhanced GA only: decay factor for aging.
         # Must be a float in (0.0, 1.0]:
@@ -175,6 +192,45 @@ class GeneticSearch:
 
         print("ERROR: random_selection_by_effective_fitness sem retorno", total)
 
+    # ── Seleção por torneio ───────────────────────────────────────────────────
+
+    def tournament_selection(self, population, tournament_size, use_effective=False):
+        """
+        Torneio: sorteia `tournament_size` indivíduos ao acaso e retorna o de maior
+        fitness. Invariante à escala do fitness — funciona bem com valores negativos
+        (ex.: fitness_parity) e mantém pressão seletiva mesmo quando a população
+        converge, dois pontos onde a roleta falha.
+
+        Com use_effective=True, compara pelo `effective_fitness` (penalizado por
+        idade), para ser usado pelo Enhanced GA.
+        """
+        indices = self.rng.integers(0, len(population), tournament_size)
+        best = population[indices[0]]
+        for i in indices[1:]:
+            challenger = population[i]
+            if use_effective:
+                if challenger.effective_fitness > best.effective_fitness:
+                    best = challenger
+            elif challenger.fitness > best.fitness:
+                best = challenger
+        return best
+
+    # ── Despachantes: escolhem o método conforme settings.selection ───────────
+
+    def _select_parent(self, population, settings):
+        """Seleção de pai do GA convencional (por fitness bruto)."""
+        if settings.selection == "tournament":
+            return self.tournament_selection(population, settings.tournament_size)
+        return self.random_selection(population)
+
+    def _select_parent_effective(self, population, settings):
+        """Seleção de pai do Enhanced GA (por effective_fitness, penalizado por idade)."""
+        if settings.selection == "tournament":
+            return self.tournament_selection(
+                population, settings.tournament_size, use_effective=True
+            )
+        return self.random_selection_by_effective_fitness(population)
+
     # ── GA Convencional ───────────────────────────────────────────────────────
 
     def geneticSearch(self, settings):
@@ -199,8 +255,8 @@ class GeneticSearch:
             next_population = [ind.copy() for ind in population[:n_elite]]
 
             while len(next_population) < settings.population_size:
-                parent1 = self.random_selection(population)
-                parent2 = self.random_selection(population)
+                parent1 = self._select_parent(population, settings)
+                parent2 = self._select_parent(population, settings)
                 child = self.reproduce(parent1, parent2)
                 self.mutation(child, settings.mutation_rate)
                 next_population.append(child)
@@ -255,8 +311,8 @@ class GeneticSearch:
             next_population = elites
 
             while len(next_population) < settings.population_size:
-                parent1 = self.random_selection_by_effective_fitness(population)
-                parent2 = self.random_selection_by_effective_fitness(population)
+                parent1 = self._select_parent_effective(population, settings)
+                parent2 = self._select_parent_effective(population, settings)
                 child = self.reproduce(parent1, parent2)
                 self.mutation(child, settings.mutation_rate)
                 child.age = 0
@@ -372,12 +428,20 @@ mutation_rate            = 0.02
 elite_levels = [0, None, 0.10, 0.20]
 labels = ["Elite: 0", "Elite: 1", "Elite: 10%", "Elite: 20%"]
 
+#   selection_method options:
+#   "roulette"   → seleção por roleta (comportamento original)
+#   "tournament" → seleção por torneio
+selection_method = "tournament"
+tournament_size  = 3          # nº de competidores por torneio (usado só em tournament)
+
 standard_settings = [
     GeneticSearchSettings(
         fitness_royal_road, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
         store_best_overall_individual=False,
-        elite_size=e
+        elite_size=e,
+        selection=selection_method,
+        tournament_size=tournament_size
     )
     for e in elite_levels
 ]
@@ -390,7 +454,9 @@ enhanced_settings = [
                                                 # (por fitness bruto) nunca seja
                                                 # perdido por conta do envelhecimento
         elite_size=e,
-        age_decay=0.9
+        age_decay=0.9,
+        selection=selection_method,
+        tournament_size=tournament_size
     )
     for e in elite_levels
 ]
