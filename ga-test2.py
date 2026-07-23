@@ -328,12 +328,40 @@ def plot_comparison_chart(standard_averages, standard_errors,
     plt.show()
 
 
+def plot_fitness_evolution(standard_histories, enhanced_histories, labels):
+
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    for i, label in enumerate(labels):
+        color = colors[i % len(colors)]
+
+        std_curve = standard_histories[i]
+        ax.plot(np.arange(len(std_curve)), std_curve,
+                linestyle='-', color=color, linewidth=2,
+                label=f"Conventional {label}")
+
+        enh_curve = enhanced_histories[i]
+        if enh_curve is not None:                       # Elite: 0 não tem Enhanced
+            ax.plot(np.arange(len(enh_curve)), enh_curve,
+                    linestyle='--', color=color, linewidth=2,
+                    label=f"Enhanced {label}")
+
+    ax.set_title('Fitness Evolution During Training', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Generations')
+    ax.set_ylabel('Fitness')
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend(loc='lower right', fontsize=8)
+    plt.tight_layout()
+    plt.show()
+
+
 # ── Configurações ──────────────────────────────────────────────────────────────
 
 population_size          = 50
 individual_genectic_size = 100
 number_of_generations    = 100
-mutation_rate            = 0.1
+mutation_rate            = 0.02
 
 #   elite_size options:
 #   None  → apenas 1 indivíduo (o melhor da geração)
@@ -346,7 +374,7 @@ labels = ["Elite: 0", "Elite: 1", "Elite: 10%", "Elite: 20%"]
 
 standard_settings = [
     GeneticSearchSettings(
-        fitness_ones, population_size, individual_genectic_size,
+        fitness_royal_road, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
         store_best_overall_individual=False,
         elite_size=e
@@ -356,20 +384,18 @@ standard_settings = [
 
 enhanced_settings = [
     GeneticSearchSettings(
-        fitness_ones, population_size, individual_genectic_size,
+        fitness_royal_road, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
-        store_best_overall_individual=True,   # essencial agora: garante que o melhor
-                                                # indivíduo (por fitness bruto) nunca
-                                                # seja perdido por conta do envelhecimento
+        store_best_overall_individual=True,   # garante que o melhor indivíduo
+                                                # (por fitness bruto) nunca seja
+                                                # perdido por conta do envelhecimento
         elite_size=e,
-        age_decay=0.5          # penalidade mais forte (sugestão 1 do professor);
-                                # combinada com a penalidade embutida no fitness
-                                # (sugestão 2), garante giro real dos elites
+        age_decay=0.9
     )
     for e in elite_levels
 ]
 
-number_of_executions = 50
+number_of_executions = 100
 
 # ── Coleta de estatísticas ─────────────────────────────────────────────────────
 
@@ -377,21 +403,36 @@ standard_averages = []
 standard_errors   = []
 enhanced_averages = []
 enhanced_errors   = []
+standard_histories = []
+enhanced_histories = []
 
 for std_settings, enh_settings, label in zip(standard_settings, enhanced_settings, labels):
 
     std_chart_data = []
     enh_chart_data = []
 
+    std_history_sum = None
+    enh_history_sum = None
+
     for _ in range(number_of_executions):
         gs_std = GeneticSearch()
         best_std = gs_std.geneticSearch(std_settings)
         std_chart_data.append(best_std.fitness)
 
+        if std_history_sum is None:
+            std_history_sum = list(gs_std.fitness_history)
+        else:
+            std_history_sum = [a + b for a, b in zip(std_history_sum, gs_std.fitness_history)]
+
         if std_settings.elite_size != 0:
             gs_enh = GeneticSearch()
             best_enh = gs_enh.enhancedGeneticSearch(enh_settings)
             enh_chart_data.append(best_enh.fitness)
+
+            if enh_history_sum is None:
+                enh_history_sum = list(gs_enh.fitness_history)
+            else:
+                enh_history_sum = [a + b for a, b in zip(enh_history_sum, gs_enh.fitness_history)]
 
         print(">", end="", flush=True)
 
@@ -400,15 +441,18 @@ for std_settings, enh_settings, label in zip(standard_settings, enhanced_setting
 
     standard_averages.append(std_average)
     standard_errors.append(std_error)
+    standard_histories.append([v / number_of_executions for v in std_history_sum])
 
     if std_settings.elite_size != 0:
         enh_average = np.average(enh_chart_data)
         enh_error   = np.std(enh_chart_data) / np.sqrt(len(enh_chart_data))
         enhanced_averages.append(enh_average)
         enhanced_errors.append(enh_error)
+        enhanced_histories.append([v / number_of_executions for v in enh_history_sum])
     else:
         enhanced_averages.append(None)
         enhanced_errors.append(0)
+        enhanced_histories.append(None)
 
     print(f"\n[{label}]")
     print(f"  Conventional GA -> Average: {std_average:.4f}, error: {std_error:.4f}")
@@ -422,3 +466,5 @@ plot_comparison_chart(
     enhanced_averages, enhanced_errors,
     labels
 )
+
+plot_fitness_evolution(standard_histories, enhanced_histories, labels)
