@@ -344,7 +344,7 @@ def fitness_center_block(individual):
     target = np.array([1 if n // 4 <= i < 3 * n // 4 else 0 for i in range(n)])
     return int(np.sum(code == target))
 
-def fitness_royal_road(individual, block_size=10):
+def fitness_royal_road(individual, block_size=5):
     code = individual.genetic_code
     n = len(code)
     usable_len = (n // block_size) * block_size
