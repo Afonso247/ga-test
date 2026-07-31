@@ -344,13 +344,23 @@ def fitness_center_block(individual):
     target = np.array([1 if n // 4 <= i < 3 * n // 4 else 0 for i in range(n)])
     return int(np.sum(code == target))
 
-def fitness_royal_road(individual, block_size=5):
+def fitness_royal_road(individual, block_size=10):
     code = individual.genetic_code
     n = len(code)
     usable_len = (n // block_size) * block_size
     blocks = code[:usable_len].reshape(-1, block_size)
     full_blocks = np.all(blocks == 1, axis=1)
     return int(np.sum(full_blocks) * block_size)
+
+def fitness_plateau_ones(individual, step=10):
+    """
+    OneMax "em degraus": conta os 1s, mas arredonda para baixo em múltiplos de
+    `step`. Cria platôs de largura `step` — dentro do platô, ganhar mais 1s não
+    muda o fitness (sem gradiente), então o convencional estagna. Só um salto de
+    `step` 1s de uma vez sobe o degrau; o aging sobe os degraus com mais frequência.
+    """
+    ones = int(np.sum(individual.genetic_code))
+    return int((ones // step) * step)
 
 def fitness_parity(individual):
     ones = int(np.sum(individual.genetic_code))
@@ -436,7 +446,7 @@ tournament_size  = 3          # nº de competidores por torneio (usado só em to
 
 standard_settings = [
     GeneticSearchSettings(
-        fitness_royal_road, population_size, individual_genectic_size,
+        fitness_plateau_ones, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
         store_best_overall_individual=False,
         elite_size=e,
@@ -448,7 +458,7 @@ standard_settings = [
 
 enhanced_settings = [
     GeneticSearchSettings(
-        fitness_royal_road, population_size, individual_genectic_size,
+        fitness_plateau_ones, population_size, individual_genectic_size,
         number_of_generations, mutation_rate,
         store_best_overall_individual=True,   # garante que o melhor indivíduo
                                                 # (por fitness bruto) nunca seja
